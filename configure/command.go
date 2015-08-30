@@ -17,9 +17,24 @@ var (
 
 func Command(args []string) {
 	parseFlags(args)
+
 	awsIsDefault()
+
 	onlyOnePlatformTypeSpecified()
+
+	unsupported("aws", aws)
+	unsupported("hosted", hosted)
+
 	fmt.Printf("Flags: aws=%v, hosted=%v, docker=%v\n", aws, hosted, docker)
+}
+
+func unsupported(name string, enabled bool) {
+	if !enabled {
+		return
+	}
+
+	fmt.Printf("--%s is unsupported yet\n", name)
+	os.Exit(1)
 }
 
 func awsIsDefault() {
@@ -82,6 +97,7 @@ func parseFlags(args []string) {
 	flags.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s %s:\n", os.Args[0], commandName)
 		flags.PrintDefaults()
+		os.Exit(1)
 	}
 
 	flags.Parse(args)
