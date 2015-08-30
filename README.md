@@ -44,10 +44,10 @@ nanoservice configure --docker
 ### Create a nanoservice
 
 ```bash
-nanoservice create NAME --TEMPLATE --LANGUAGE
+nanoservice create --TEMPLATE --LANGUAGE NAME
 ```
 
-Example: `nanoservice helloworld --web --golang`.
+Example: `nanoservice --web --golang helloworld`.
 
 ### Deploy a nanoservice
 
