@@ -1,8 +1,11 @@
 package configure
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/nanoservice/nanoservice/config"
+	"log"
 	"os"
 )
 
@@ -25,7 +28,28 @@ func Command(args []string) {
 	unsupported("aws", aws)
 	unsupported("hosted", hosted)
 
-	fmt.Printf("Flags: aws=%v, hosted=%v, docker=%v\n", aws, hosted, docker)
+	storeDockerConfiguration()
+}
+
+func storeDockerConfiguration() {
+	configuration := config.Config{
+		Docker: config.DockerConfig{
+			Endpoint: "unix:///var/run/docker.sock",
+		},
+	}
+
+	rawConfiguration, err := json.Marshal(configuration)
+	if err != nil {
+		log.Fatalf("Unable to marshal configuration: %v\n", err)
+	}
+
+	file, err := os.Create(".nanoservice.json")
+	if err != nil {
+		log.Fatalf("Unable to open configuration file: %v\n", err)
+	}
+	defer file.Close()
+
+	file.Write(rawConfiguration)
 }
 
 func unsupported(name string, enabled bool) {
