@@ -42,6 +42,7 @@ func createGoWebService(name string, golang bool, web bool) {
 	}
 
 	os.Mkdir(name, dirPermission)
+	downloadFile("https://github.com/nanoservice/template.web.go/raw/master/Dockerfile", name+"/Dockerfile")
 	downloadFile("https://github.com/nanoservice/template.web.go/raw/master/main.go", name+"/main.go")
 	downloadFile("https://github.com/nanoservice/template.web.go/raw/master/README.md", name+"/README.md")
 }

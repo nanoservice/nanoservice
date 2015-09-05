@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/nanoservice/nanoservice/config"
 	"log"
 	"os"
+
+	"github.com/nanoservice/nanoservice/config"
 )
 
 var (
