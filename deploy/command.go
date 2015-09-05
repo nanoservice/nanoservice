@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strings"
 
 	"github.com/nanoservice/nanoservice/config"
 )
@@ -34,6 +36,7 @@ func Command(args []string) {
 func runApp() {
 	createServiceNameFile()
 	buildApp()
+	rmApp()
 	startApp()
 }
 
@@ -41,15 +44,39 @@ func runApp() {
 func buildApp() {
 	ensureNoError(
 		rawCommand("docker", "build", "-t", serviceName(), "."),
-		"Unable to build application",
+		"Unable to build service",
+	)
+}
+
+// FIXME: switch to docker client
+func rmApp() {
+	psOutput, err := rawOutput("docker", "ps", "-a", "-q", "-f", "label="+serviceName())
+	ensureNoError(err, "Unable to verify current status of service")
+
+	rawIds := strings.Split(psOutput, "\n")
+	ids := []string{}
+	for _, id := range rawIds {
+		if id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	args := append([]string{"rm", "-f"}, ids...)
+
+	ensureNoError(
+		rawCommand("docker", args...),
+		"Unable to stop currently running service",
 	)
 }
 
 // FIXME: switch to docker client
 func startApp() {
 	ensureNoError(
-		rawCommand("docker", "run", "-d", "-p", "8080", "--name", serviceName()+"_1", serviceName()),
-		"Unable to start application",
+		rawCommand("docker", "run", "-d", "-p", "8080", "--name", serviceName()+"_1", "--label", serviceName(), serviceName()),
+		"Unable to start service",
 	)
 }
 
@@ -58,6 +85,15 @@ func rawCommand(name string, cmd ...string) error {
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
 	return command.Run()
+}
+
+func rawOutput(name string, cmd ...string) (string, error) {
+	var out bytes.Buffer
+	command := exec.Command(name, cmd...)
+	command.Stdout = &out
+	command.Stderr = os.Stderr
+	err := command.Run()
+	return out.String(), err
 }
 
 func createServiceNameFile() {
