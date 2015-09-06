@@ -1,15 +1,20 @@
 package deploy
 
 import (
+	"archive/tar"
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"path"
+	"path/filepath"
 	"strings"
+
+	"gopkg.in/fsouza/go-dockerclient.v0"
 
 	"github.com/nanoservice/nanoservice/config"
 )
@@ -17,6 +22,8 @@ import (
 var (
 	configPath    string
 	configuration *config.Config
+
+	dockerClient *docker.Client
 
 	configNotFound = errors.New(
 		"Config `.nanoservice.json` not found; try running `nanoservice configure`",
@@ -30,6 +37,7 @@ const (
 func Command(args []string) {
 	configPath = findConfig()
 	configuration = parseConfig()
+	dockerClient = initDockerClient()
 	runApp()
 }
 
@@ -40,44 +48,104 @@ func runApp() {
 	startApp()
 }
 
-// FIXME: switch to docker client
-func buildApp() {
-	ensureNoError(
-		rawCommand("docker", "build", "-t", serviceName(), "."),
-		"Unable to build service",
-	)
+func initDockerClient() (client *docker.Client) {
+	client, err := docker.NewClient(configuration.Docker.Endpoint)
+	ensureNoError(err, "Unable to connect to docker")
+	return
 }
 
-// FIXME: switch to docker client
+func buildApp() {
+	buf := new(bytes.Buffer)
+	tw := tar.NewWriter(buf)
+
+	filepath.Walk(".", filepath.WalkFunc(func(path string, info os.FileInfo, err error) error {
+		if info.Mode().IsDir() {
+			return nil
+		}
+
+		if strings.HasPrefix(path, ".git") {
+			return nil
+		}
+
+		log.Printf("transferring %s", path)
+
+		fr, err := os.Open(path)
+		ensureNoError(err, "Unable to open file "+path)
+		defer fr.Close()
+
+		h, err := tar.FileInfoHeader(info, path)
+		ensureNoError(err, "Unable to construct tar info header for "+path)
+
+		err = tw.WriteHeader(h)
+		ensureNoError(err, "Unable to write tar headder for "+path)
+
+		_, err = io.Copy(tw, fr)
+		ensureNoError(err, "Unable to write file contents to tar "+path)
+
+		return nil
+	}))
+
+	tw.Close()
+
+	err := dockerClient.BuildImage(docker.BuildImageOptions{
+		Name:         serviceName(),
+		InputStream:  buf,
+		OutputStream: os.Stdout,
+	})
+
+	ensureNoError(err, "Unable to build image")
+}
+
 func rmApp() {
-	psOutput, err := rawOutput("docker", "ps", "-a", "-q", "-f", "label="+serviceName())
+	containers, err := dockerClient.ListContainers(docker.ListContainersOptions{
+		All: true,
+		Filters: map[string][]string{
+			"label": []string{
+				serviceName(),
+			},
+		},
+	})
 	ensureNoError(err, "Unable to verify current status of service")
 
-	rawIds := strings.Split(psOutput, "\n")
-	ids := []string{}
-	for _, id := range rawIds {
-		if id != "" {
-			ids = append(ids, id)
-		}
-	}
-	if len(ids) == 0 {
+	if len(containers) == 0 {
 		return
 	}
 
-	args := append([]string{"rm", "-f"}, ids...)
-
-	ensureNoError(
-		rawCommand("docker", args...),
-		"Unable to stop currently running service",
-	)
+	for _, container := range containers {
+		err := dockerClient.RemoveContainer(docker.RemoveContainerOptions{
+			ID:    container.ID,
+			Force: true,
+		})
+		ensureNoError(err, "Unable to stop already running instance of service")
+	}
 }
 
-// FIXME: switch to docker client
 func startApp() {
-	ensureNoError(
-		rawCommand("docker", "run", "-d", "-p", "8080", "--name", serviceName()+"_1", "--label", serviceName(), serviceName()),
-		"Unable to start service",
-	)
+	hostConfig := &docker.HostConfig{
+		PortBindings: map[docker.Port][]docker.PortBinding{
+			"8080/tcp": []docker.PortBinding{
+				docker.PortBinding{},
+			},
+		},
+	}
+
+	container, err := dockerClient.CreateContainer(docker.CreateContainerOptions{
+		Name: serviceName() + "_1",
+		Config: &docker.Config{
+			Labels: map[string]string{
+				serviceName(): "",
+			},
+			Image: serviceName(),
+			ExposedPorts: map[docker.Port]struct{}{
+				"8080/tcp": struct{}{},
+			},
+		},
+		HostConfig: hostConfig,
+	})
+	ensureNoError(err, "Unable to create container")
+
+	err = dockerClient.StartContainer(container.ID, hostConfig)
+	ensureNoError(err, "Unable to start container "+container.ID)
 }
 
 func rawCommand(name string, cmd ...string) error {
