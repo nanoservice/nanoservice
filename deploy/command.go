@@ -48,10 +48,20 @@ func runApp() {
 	startApp()
 }
 
-func initDockerClient() (client *docker.Client) {
+func initDockerClient() *docker.Client {
+	if configuration.DockerMachine.ReadFromEnv {
+		return initDockerMachineClient()
+	}
+
 	client, err := docker.NewClient(configuration.Docker.Endpoint)
 	ensureNoError(err, "Unable to connect to docker")
-	return
+	return client
+}
+
+func initDockerMachineClient() *docker.Client {
+	client, err := docker.NewClientFromEnv()
+	ensureNoError(err, "Unable to connect to docker via docker-machine env variables. Have you run `docker env NAME`?")
+	return client
 }
 
 func buildApp() {

@@ -29,16 +29,34 @@ func Command(args []string) {
 	unsupported("aws", aws)
 	unsupported("hosted", hosted)
 
-	storeDockerConfiguration()
+	storeDockerConfiguration(newConfiguration())
 }
 
-func storeDockerConfiguration() {
-	configuration := config.Config{
+func dockerConfiguration() config.Config {
+	return config.Config{
 		Docker: config.DockerConfig{
 			Endpoint: "unix:///var/run/docker.sock",
 		},
 	}
+}
 
+func dockerMachineConfiguration() config.Config {
+	return config.Config{
+		DockerMachine: config.DockerMachineConfig{
+			ReadFromEnv: true,
+		},
+	}
+}
+
+func newConfiguration() config.Config {
+	if os.Getenv("DOCKER_MACHINE_NAME") != "" {
+		return dockerMachineConfiguration()
+	}
+
+	return dockerConfiguration()
+}
+
+func storeDockerConfiguration(configuration config.Config) {
 	rawConfiguration, err := json.Marshal(configuration)
 	if err != nil {
 		log.Fatalf("Unable to marshal configuration: %v\n", err)
