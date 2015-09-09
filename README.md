@@ -4,17 +4,14 @@ This is part of nanoservice core.
 
 ## Installation
 
+```bash
+curl -L http://git.io/nanoservice | bash
+```
+
 To build it yourself, make sure you have recent version of Go setup and run:
 
 ```bash
 go get github.com/nanoservice/nanoservice
-```
-
-In the future this will be possible:
-
-```bash
-# TODO: make this installer and build static binaries
-curl -L https://github.com/nanoservice/installer/raw/stable/install.sh | bash
 ```
 
 ## Usage
