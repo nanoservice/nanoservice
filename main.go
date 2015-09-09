@@ -1,5 +1,5 @@
 //go:generate nanotemplate -T command.Command -t command -I github.com/nanoservice/nanoservice/command --input=_fetcher.tt.go
-package main
+package main // import "github.com/nanoservice/nanoservice"
 
 import (
 	"fmt"
