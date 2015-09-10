@@ -18,21 +18,36 @@ var (
 	)
 )
 
-func Start(client *docker.Client, ID string, ports []string) error {
-	return client.StartContainer(ID, hostConfigFrom(ports))
+func Exists(client *docker.Client, ID string) bool {
+	_, err := client.InspectContainer(ID)
+	return err == nil
 }
 
-func Create(client *docker.Client, image string, name string, ports []string) error {
+func Running(client *docker.Client, ID string) (bool, error) {
+	container, err := client.InspectContainer(ID)
+	if err != nil {
+		return false, err
+	}
+
+	return container.State.Running, nil
+}
+
+func Start(client *docker.Client, ID string, ports []string) error {
+	return client.StartContainer(ID, hostConfigFrom(ports, []string{}))
+}
+
+func Create(client *docker.Client, image string, name string, label string, ports []string, env []string, links []string) error {
 	_, err := client.CreateContainer(docker.CreateContainerOptions{
 		Name: name,
 		Config: &docker.Config{
 			Labels: map[string]string{
-				name: "",
+				label: "",
 			},
 			Image:        image,
 			ExposedPorts: exposedPortsFrom(ports),
+			Env:          env,
 		},
-		HostConfig: hostConfigFrom(ports),
+		HostConfig: hostConfigFrom(ports, links),
 	})
 	return err
 }
@@ -55,9 +70,10 @@ func NewDockerClient() (*docker.Client, error) {
 	return client, nil
 }
 
-func hostConfigFrom(ports []string) *docker.HostConfig {
+func hostConfigFrom(ports []string, links []string) *docker.HostConfig {
 	return &docker.HostConfig{
 		PortBindings: portBindingsFrom(ports),
+		Links:        links,
 	}
 }
 

@@ -13,14 +13,10 @@ import (
 
 	"gopkg.in/fsouza/go-dockerclient.v0"
 
-	"github.com/nanoservice/nanoservice/config"
 	"github.com/nanoservice/nanoservice/containers"
 )
 
 var (
-	configPath    string
-	configuration *config.Config
-
 	dockerClient *docker.Client
 )
 
@@ -114,8 +110,8 @@ func startApp() {
 	ports := []string{"8080/tcp"}
 
 	ensureNoError(
-		containers.Create(dockerClient, image, name, ports),
-		"Unable to create container",
+		containers.Create(dockerClient, image, name, image, ports, []string{}, []string{"nanoservice_bus_1:bus"}),
+		"Unable to create container from "+image+" with name "+name,
 	)
 
 	ensureNoError(

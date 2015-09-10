@@ -7,7 +7,10 @@ import (
 	"log"
 	"os"
 
+	dockerlib "gopkg.in/fsouza/go-dockerclient.v0"
+
 	"github.com/nanoservice/nanoservice/config"
+	"github.com/nanoservice/nanoservice/containers"
 )
 
 var (
@@ -17,6 +20,8 @@ var (
 	aws    bool
 	hosted bool
 	docker bool
+
+	dockerClient *dockerlib.Client
 )
 
 func Command(args []string) {
@@ -30,20 +35,58 @@ func Command(args []string) {
 	unsupported("hosted", hosted)
 
 	storeDockerConfiguration(newConfiguration())
+
+	var err error
+	dockerClient, err = containers.NewDockerClient()
+	ensureNoError(err, "Unable to configure docker client")
+
 	runBus()
 }
 
 func runBus() {
-	if started := startBus(); !started {
+	if !busExists() {
 		createBus()
+	}
+
+	if !busRunning() {
+		startBus()
 	}
 }
 
-func startBus() bool {
-	return true
+func startBus() {
+	name := busName()
+	ports := []string{"2181/tcp", "9092/tcp"}
+
+	ensureNoError(
+		containers.Start(dockerClient, name, ports),
+		"Unable to start bus cluster",
+	)
 }
 
 func createBus() {
+	name := busName()
+	image := "spotify/kafka"
+	ports := []string{"2181/tcp", "9092/tcp"}
+	env := []string{"ADVERTISED_HOST=bus", "ADVERTISED_PORT=9092"}
+
+	ensureNoError(
+		containers.Create(dockerClient, image, name, "bus", ports, env, []string{}),
+		"Unable to create bus cluster",
+	)
+}
+
+func busExists() bool {
+	return containers.Exists(dockerClient, busName())
+}
+
+func busRunning() bool {
+	running, err := containers.Running(dockerClient, busName())
+	ensureNoError(err, "Unable to verify if bus is running or not")
+	return running
+}
+
+func busName() string {
+	return "nanoservice_bus_1"
 }
 
 func dockerConfiguration() config.Config {
@@ -158,4 +201,12 @@ func parseFlags(args []string) {
 	}
 
 	flags.Parse(args)
+}
+
+func ensureNoError(err error, message string) {
+	if err == nil {
+		return
+	}
+
+	log.Fatalf("%s: %v", message, err)
 }
