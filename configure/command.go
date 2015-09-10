@@ -30,6 +30,20 @@ func Command(args []string) {
 	unsupported("hosted", hosted)
 
 	storeDockerConfiguration(newConfiguration())
+	runBus()
+}
+
+func runBus() {
+	if started := startBus(); !started {
+		createBus()
+	}
+}
+
+func startBus() bool {
+	return true
+}
+
+func createBus() {
 }
 
 func dockerConfiguration() config.Config {

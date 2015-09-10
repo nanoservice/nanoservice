@@ -3,13 +3,10 @@ package deploy
 import (
 	"archive/tar"
 	"bytes"
-	"encoding/json"
-	"errors"
 	"io"
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -17,6 +14,7 @@ import (
 	"gopkg.in/fsouza/go-dockerclient.v0"
 
 	"github.com/nanoservice/nanoservice/config"
+	"github.com/nanoservice/nanoservice/containers"
 )
 
 var (
@@ -24,10 +22,6 @@ var (
 	configuration *config.Config
 
 	dockerClient *docker.Client
-
-	configNotFound = errors.New(
-		"Config `.nanoservice.json` not found; try running `nanoservice configure`",
-	)
 )
 
 const (
@@ -35,9 +29,9 @@ const (
 )
 
 func Command(args []string) {
-	configPath = findConfig()
-	configuration = parseConfig()
-	dockerClient = initDockerClient()
+	var err error
+	dockerClient, err = containers.NewDockerClient()
+	ensureNoError(err, "Unable to configure docker client")
 	runApp()
 }
 
@@ -46,22 +40,6 @@ func runApp() {
 	buildApp()
 	rmApp()
 	startApp()
-}
-
-func initDockerClient() *docker.Client {
-	if configuration.DockerMachine.ReadFromEnv {
-		return initDockerMachineClient()
-	}
-
-	client, err := docker.NewClient(configuration.Docker.Endpoint)
-	ensureNoError(err, "Unable to connect to docker")
-	return client
-}
-
-func initDockerMachineClient() *docker.Client {
-	client, err := docker.NewClientFromEnv()
-	ensureNoError(err, "Unable to connect to docker via docker-machine env variables. Have you run `docker env NAME`?")
-	return client
 }
 
 func buildApp() {
@@ -131,47 +109,19 @@ func rmApp() {
 }
 
 func startApp() {
-	hostConfig := &docker.HostConfig{
-		PortBindings: map[docker.Port][]docker.PortBinding{
-			"8080/tcp": []docker.PortBinding{
-				docker.PortBinding{},
-			},
-		},
-	}
+	name := serviceName() + "_1"
+	image := serviceName()
+	ports := []string{"8080/tcp"}
 
-	container, err := dockerClient.CreateContainer(docker.CreateContainerOptions{
-		Name: serviceName() + "_1",
-		Config: &docker.Config{
-			Labels: map[string]string{
-				serviceName(): "",
-			},
-			Image: serviceName(),
-			ExposedPorts: map[docker.Port]struct{}{
-				"8080/tcp": struct{}{},
-			},
-		},
-		HostConfig: hostConfig,
-	})
-	ensureNoError(err, "Unable to create container")
+	ensureNoError(
+		containers.Create(dockerClient, image, name, ports),
+		"Unable to create container",
+	)
 
-	err = dockerClient.StartContainer(container.ID, hostConfig)
-	ensureNoError(err, "Unable to start container "+container.ID)
-}
-
-func rawCommand(name string, cmd ...string) error {
-	command := exec.Command(name, cmd...)
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
-	return command.Run()
-}
-
-func rawOutput(name string, cmd ...string) (string, error) {
-	var out bytes.Buffer
-	command := exec.Command(name, cmd...)
-	command.Stdout = &out
-	command.Stderr = os.Stderr
-	err := command.Run()
-	return out.String(), err
+	ensureNoError(
+		containers.Start(dockerClient, name, ports),
+		"Unable to start container "+name,
+	)
 }
 
 func createServiceNameFile() {
@@ -186,49 +136,16 @@ func serviceName() string {
 	return path.Base(currentDir())
 }
 
-func parseConfig() *config.Config {
-	data, err := ioutil.ReadFile(configPath)
-	ensureNoError(err,
-		"Unable to read config file, make sure permissions on `.nanoservice.json` are correct",
-	)
-
-	configuration := &config.Config{}
-	err = json.Unmarshal(data, configuration)
-	ensureNoError(err, "Unable to parse config file")
-
-	return configuration
-}
-
-func findConfig() string {
-	dir := currentDir()
-
-	for {
-		configPath := path.Join(dir, ".nanoservice.json")
-		if _, err := os.Stat(configPath); err == nil {
-			return configPath
-		}
-
-		if dir == "/" {
-			break
-		}
-
-		dir = path.Join(dir, "..")
-	}
-
-	ensureNoError(configNotFound, "Unable to find config")
-	return ""
-}
-
-func currentDir() string {
-	dir, err := os.Getwd()
-	ensureNoError(err, "Unable to get current directory")
-	return dir
-}
-
 func ensureNoError(err error, message string) {
 	if err == nil {
 		return
 	}
 
 	log.Fatalf("%s: %v", message, err)
+}
+
+func currentDir() string {
+	dir, err := os.Getwd()
+	ensureNoError(err, "Unable to determine current dir")
+	return dir
 }
